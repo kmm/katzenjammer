@@ -16,10 +16,6 @@ from fractions import Fraction
 cat_path = "katze/"
 asset_path = "assets/"
 
-ISOSPEEDS = [64, 100, 200, 250, 320, 400, 640, 800, 1000, 1600, 3200]
-SHUTTERSPEEDS = [15, 30, 60, 125, 250, 400, 500, 1000, 1250, 1600, 2000, 4000]
-FSTOPS = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.7, 1.8, 2, 2.2, 2.4, 2.6, 2.8, 3.2, 3.4, 3.7, 4, 4.4, 4.8, 5.2, 5.6, 6.2, 6.7,
-          7.3, 8, 8.7, 9.5, 10, 11, 12, 14, 15, 16, 17, 19, 21, 22]
 '''
 # "Exif.Photo.BodySerialNumber": "023021009293"
 # "Exif.Canon.InternalSerialNumber": "AD0026822"
@@ -40,14 +36,17 @@ FSTOPS = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.7, 1.8, 2, 2.2, 2.4, 2.6, 2.8, 3.2, 3.
 '''
 
 class Camera:
+	ISOSPEEDS = [64, 100, 200, 250, 320, 400, 640, 800, 1000, 1600, 3200]
+	SHUTTERSPEEDS = [15, 30, 60, 125, 250, 400, 500, 1000, 1250, 1600, 2000, 4000]
+	FSTOPS = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.7, 1.8, 2, 2.2, 2.4, 2.6, 2.8, 3.2, 3.4, 3.7, 4, 4.4, 4.8, 5.2, 5.6, 6.2, 6.7, 7.3, 8, 8.7, 9.5, 10, 11, 12, 14, 15, 16, 17, 19, 21, 22]
 	def __init__(self):
 		cameras = []
 		self.hints = {}
-		self.hints['default'] = {"SerialTags":['Exif.Photo.BodySerialNumber',
-										  'Exif.Canon.InternalSerialNumber',
-										  'Exif.Photo.LensSerialNumber',
-										  'Xmp.aux.SerialNumber',
-										  'Exif.Nikon3.SerialNumber']
+		self.hints['default'] = {"SerialTags": ['Exif.Photo.BodySerialNumber',
+												'Exif.Canon.InternalSerialNumber',
+												'Exif.Photo.LensSerialNumber',
+												'Xmp.aux.SerialNumber',
+												'Exif.Nikon3.SerialNumber']
 							}
 		self.time = None
 		self.camera = None
@@ -72,10 +71,29 @@ class Camera:
 	def get_lens(self, camera=None):
 		pass
 
-	def file_serials(self, camera=None):
+	def randomize_serial(self, serial):
+		newserial = str()
+		for idx, char in enumerate(serial):
+			if char.isalpha():
+				maxchar = ord(char)
+				minchar = ord('A') # fixme: find lowest character value in factory serial
+				newserial += str(chr(random.randint(minchar, maxchar)))
+			elif char.isdigit():
+				maxchar = int(9)
+				minchar = int(0) # fixme: find lowest character value in factory serial
+				newserial += str(random.randint(minchar, maxchar))
+			else:
+				print "Weird character %02x in serial '%s' at position %i, leaving it alone." % (ord(char), serial, idx)
+				newserial += char
+		return newserial
+
+	def file_serials(self, camera):
+		''' file as in file off '''
 		for tag in self.hints['default']['SerialTags']:
 			if tag in camera.keys():
-				print "Tag match: ", tag
+				print "Fixing serial: %s (%s)" % (tag, camera[tag])
+				camera[tag] = self.randomize_serial(camera[tag])
+		return camera
 
 	def load_metadata(self, cameras, hints=None):
 		# camera_makes = set([camera['Exif.Image.Make'] for camera in cameras])
