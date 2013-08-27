@@ -21,31 +21,115 @@ SHUTTERSPEEDS = [15, 30, 60, 125, 250, 400, 500, 1000, 1250, 1600, 2000, 4000]
 FSTOPS = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.7, 1.8, 2, 2.2, 2.4, 2.6, 2.8, 3.2, 3.4, 3.7, 4, 4.4, 4.8, 5.2, 5.6, 6.2, 6.7,
           7.3, 8, 8.7, 9.5, 10, 11, 12, 14, 15, 16, 17, 19, 21, 22]
 '''
+# "Exif.Photo.BodySerialNumber": "023021009293"
+# "Exif.Canon.InternalSerialNumber": "AD0026822"
+# "Exif.Canon.LensModel": "EF24-105mm f/4L IS USM",
+# "Exif.Photo.LensSerialNumber": "00001061f2"
+# "Exif.Canon.FirmwareVersion": "Firmware Version 1.0.7"
+# "Exif.Photo.CameraOwnerName": ""
+# "Exif.CanonCs.ISOSpeed": "15"
+# "Exif.CanonSi.TargetAperture": "212"
+# "Exif.Photo.LensSpecification": "24/1 105/1 0/1 0/1"
+# "Exif.Nikon3.Lens": "70/1 200/1 280/100 280/100"
+# "Xmp.aux.Lens": "70.0-200.0 mm f/2.8"
+# "Xmp.aux.LensInfo": "70/1 200/1 280/100 280/100"
+# "Exif.NikonLd3.LensIDNumber": "162"
+# "Exif.Nikon3.LensFStops": "72 1 12 0"
+# "Xmp.aux.SerialNumber": "2006688"
+# "Exif.Nikon3.SerialNumber": "2006688"
+'''
+
 class Camera:
 	def __init__(self):
-		vendors = []
 		cameras = []
-		camera=None
+		self.hints = {}
+		self.hints['default'] = {"SerialTags":['Exif.Photo.BodySerialNumber',
+										  'Exif.Canon.InternalSerialNumber',
+										  'Exif.Photo.LensSerialNumber',
+										  'Xmp.aux.SerialNumber',
+										  'Exif.Nikon3.SerialNumber']
+							}
+		self.time = None
+		self.camera = None
+		self.lens = None
+
 		pass
 
-	def load_metadata(self, vendors, cameras):
+	def load_json_dumps(self, indir):
+		dumps = []
+		for dumpfile in glob.glob(os.path.join(indir, "*.json")):
+			with open(dumpfile) as df:
+				dump = json.load(df)
+				dumps.append(dump)
+		return dumps
+
+	def camera_makes(self):
+		return set([camera['Exif.Image.Make'] for camera in self.cameras])
+
+	def camera_models(self):
+		return set([camera['Exif.Image.Model'] for camera in self.cameras])
+
+	def get_lens(self, camera=None):
+		pass
+
+	def file_serials(self, camera=None):
+		for tag in self.hints['default']['SerialTags']:
+			if tag in camera.keys():
+				print "Tag match: ", tag
+
+	def load_metadata(self, cameras, hints=None):
 		# camera_makes = set([camera['Exif.Image.Make'] for camera in cameras])
 		# models_for_make = set([camera['Exif.Image.Model'] for camera in cameras if camera['Exif.Image.Make'] == 'Canon'])
 		# make_for_model = set([camera['Exif.Image.Make'] for camera in cameras if camera['Exif.Image.Model'] == u'Canon PowerShot G15'])
+		self.cameras = self.load_json_dumps(cameras)
+		if hints:
+			self.hints = self.load_json_dumps(hints)
+		print "Have %i cameras comprising %i unique makes and %i unique models." % (len(self.cameras), len(self.camera_makes()), len(self.camera_models()))
+		for camera in self.cameras:
+			print "%s: %s (%s)" % (camera['Exif.Image.Make'], camera['Exif.Image.Model'], self.get_lens(camera))
+		return self
+
+	def hint(self, make):
+		# get metadata hint for a vendor
+		# applicable vendor EXIF tags, lenses, etc
 		pass
 
-	def camera(self):
+	def time(self, spanstart=None, spanend=None):
+		pass
+
+	def lens(self, make=None, model=None):
+		# set the lens
+		# random make model if not specified
+		# if both, make is ignored
+		pass
+
+	def camera(self, make=None, model=None):
 		# set the camera
+		# random make model if not specified
+		# if both, make is ignored
 		pass
 
-	def randomize(self):
-		# pick a random camera
+	def exposure(self, ev=None):
+		# randomized on EXIF time with extra perturbations
+		# used by aperture and shutter
+		pass
+
+	def aperture(self, fstop=None):
+		# calculated from exposure value if available
+		# randomized between lens minf/maxf limit if available
+		# randomized between defaults if not
+		pass
+
+	def shutter(self, speed=None):
+		# calculated from exposure value and aperture if available
+		# randomized from camera shutter_speeds if available
+		# randomized between camera mins/maxs limit if available
 		pass
 
 	def snap(self, camera=None):
 		# take a picture (generate an EXIF template based on the selected camera)
 		pass
-
+'''
 class Tourist:
 	def __init__(self):
 		locations = []
@@ -54,7 +138,6 @@ class Tourist:
 	def randomize(self):
 		# pick a random point of interest
 		pass
-
 '''
 
 
@@ -118,13 +201,6 @@ def dump_exif(indir, outdir, clobber=False):
 		else:
 			print "EXIF dump already exists for %s, skipping" % imgfile
 
-def load_exif_dumps(indir):
-	dumps = []
-	for dumpfile in glob.glob(os.path.join(indir, "*.json")):
-		with open(dumpfile) as df:
-			dump = json.load(df)
-			dumps.append(dump)
-	return dumps
 
 def random_timestamp(start=(time.time() - 3.15569e7), end=time.time()):
 	return time.gmtime(random.randint(int(start), int(end)))
@@ -199,7 +275,7 @@ def fix_image(image, template_exif):
 	image_exif = fix_exif(image_exif, template_exif)
 	image_exif.save_file()
 	return temp
-	
+'''
 dump_exif("camrefs", "exifdumps")
 cameras = load_exif_dumps("exifdumps")
 imgbuf = StringIO.StringIO()
@@ -207,5 +283,11 @@ cats = load_cats(cat_path)
 assets = load_cats(asset_path)
 katze = collage(2048, 1024, assets, cats, 10)
 kexif = fix_image(katze, random.choice(cameras))
+'''
+
+cam = Camera()
+cam.load_metadata("exifdumps")
+cam.camera = random.choice(cam.cameras)
+
 import code
 code.interact(local=locals())
