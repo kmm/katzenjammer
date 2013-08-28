@@ -1,0 +1,51 @@
+{
+    "Randomize": {
+        "Exif.NikonLd3.FocusDistance": [
+            "auto_randomize_integer",
+            0.5
+        ],
+        "Exif.Photo.SubjectArea": [
+            "auto_randomize_rect",
+            null
+        ],
+        "Exif.Nikon3.ShutterCount": [
+            "auto_randomize_integer",
+            0.5
+        ],
+        "Exif.NikonPc.Saturation": [
+            "auto_randomize_integer",
+            0.25
+        ],
+        "Exif.CanonSi.TargetAperture": [
+            "auto_randomize_integer",
+            0.1
+        ]
+    },
+    "SerialTags": [
+        "Exif.Photo.BodySerialNumber",
+        "Exif.Canon.InternalSerialNumber",
+        "Exif.Photo.LensSerialNumber",
+        "Xmp.aux.SerialNumber",
+        "Exif.Nikon3.SerialNumber"
+    ],
+    "TimeFormats": {
+        "nikonxmp": [
+            "\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d.\\d\\d\\w",
+            "%Y-%m-%dT%H:%M:%S.00Z"
+        ],
+        "gpstime": [
+            "\\d+\\/\\d+\\s+\\d+\\/\\d+\\s+\\d+\\/\\d+",
+            null
+        ],
+        "exif": [
+            "\\d{4}:\\d\\d:\\d\\d \\d\\d:\\d\\d:\\d\\d",
+            "%Y:%m:%d %H:%M:%S"
+        ]
+    },
+    "FileNames": {
+        "Sony": "mvc00###.jpg",
+        "NIKON CORPORATION": "dsc0###.jpg",
+        "Canon": "IMG_0###.jpg",
+        "Apple": "IMG00###.jpg"
+    }
+}
