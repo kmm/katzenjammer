@@ -122,14 +122,15 @@ class Camera:
 						print "%s: Fixing timestamp" % tag
 						camera[tag] = time.strftime(format[1], newtime)
 						skiptags = [t for t in skiptags if t != tag] # if we skipped it before, remove it from the skipped tag list now
-					if match and not format[1]:
+					elif match and not format[1]:
+						# FIXME add handlers for weird times like GPS's list of three rationals
 						print "%s: Weird timestamp that can't be strftime()ed, skipping." % tag
 						skiptags.append(tag)
 					else:
-						# FIXME add handlers for weird times like GPS's list of three rationals
 						skiptags.append(tag)
 		skiptags = list(set(skiptags))
 		# blank out the skipped tags
+		print skiptags
 		for t in skiptags:
 			camera[t] = ''
 
