@@ -33,6 +33,8 @@ asset_path = "assets/"
 # "Exif.Nikon3.LensFStops": "72 1 12 0"
 # "Xmp.aux.SerialNumber": "2006688"
 # "Exif.Nikon3.SerialNumber": "2006688"
+# "Exif.NikonWt.Timezone": "0"
+# 'Xmp.xmp.ModifyDate': "2010-02-11T15:35:55.00Z" <- weird time format
 '''
 
 class Camera:
@@ -42,12 +44,20 @@ class Camera:
 	def __init__(self):
 		cameras = []
 		self.hints = {}
-		self.hints['default'] = {"SerialTags": ['Exif.Photo.BodySerialNumber',
-												'Exif.Canon.InternalSerialNumber',
-												'Exif.Photo.LensSerialNumber',
-												'Xmp.aux.SerialNumber',
-												'Exif.Nikon3.SerialNumber']
-							}
+		self.hints['default'] = {
+			"SerialTags": [
+				'Exif.Photo.BodySerialNumber',
+				'Exif.Canon.InternalSerialNumber',
+				'Exif.Photo.LensSerialNumber',
+				'Xmp.aux.SerialNumber',
+				'Exif.Nikon3.SerialNumber'
+			],
+			"TimeFormats": {
+				"nikonxmp":('\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d.\d\d\w', "%Y-%m-%dT%H:%M:%S.00Z"),
+				"exif":('\d{4}:\d\d:\d\d \d\d:\d\d:\d\d', "%Y:%m:%d %H:%M:%S"),
+				"gpstime":('\d+\/\d+\s+\d+\/\d+\s+\d+\/\d+', None)
+			}
+		}
 		self.time = None
 		self.camera = None
 		self.lens = None
@@ -71,6 +81,11 @@ class Camera:
 	def get_lens(self, camera=None):
 		pass
 
+	def randomize_timestamp(self, start=(time.time() - 3.15569e7), end=time.time()):
+		ts = random.randint(int(start), int(end))
+		t = time.gmtime(ts)
+		return t
+
 	def randomize_serial(self, serial):
 		newserial = str()
 		for idx, char in enumerate(serial):
@@ -87,13 +102,41 @@ class Camera:
 				newserial += char
 		return newserial
 
-	def file_serials(self, camera):
-		''' file as in file off '''
+	def fix_serials(self, camera):
+		''' file off the serial number '''
 		for tag in self.hints['default']['SerialTags']:
 			if tag in camera.keys():
 				print "Fixing serial: %s (%s)" % (tag, camera[tag])
 				camera[tag] = self.randomize_serial(camera[tag])
 		return camera
+
+	def fix_timestamps(self, camera, newtime):
+		# imgtime = time.strftime("%Y:%m:%d %H:%M:%S", random_timestamp())
+		skiptags = []
+		for tag in camera.keys():
+			if re.search('\w+Time\w+', tag):
+				for fmtname, format in self.hints['default']['TimeFormats'].iteritems():
+					match = re.search(format[0], camera[tag])
+					# print "%s - match:%s format[0]:'%s' format[1]:'%s' value:'%s'" % (fmtname, bool(match), format[0], format[1], camera[tag])
+					if match and format[1]:
+						print "%s: Fixing timestamp" % tag
+						camera[tag] = time.strftime(format[1], newtime)
+						skiptags = [t for t in skiptags if t != tag] # if we skipped it before, remove it from the skipped tag list now
+					if match and not format[1]:
+						print "%s: Weird timestamp that can't be strftime()ed, skipping." % tag
+						skiptags.append(tag)
+					else:
+						# FIXME add handlers for weird times like GPS's list of three rationals
+						skiptags.append(tag)
+		skiptags = list(set(skiptags))
+		# blank out the skipped tags
+		for t in skiptags:
+			camera[t] = ''
+
+		return camera
+					
+	def fix_hinted_tags(self, camera):
+		pass
 
 	def load_metadata(self, cameras, hints=None):
 		# camera_makes = set([camera['Exif.Image.Make'] for camera in cameras])
@@ -112,20 +155,24 @@ class Camera:
 		# applicable vendor EXIF tags, lenses, etc
 		pass
 
-	def time(self, spanstart=None, spanend=None):
-		pass
-
-	def lens(self, make=None, model=None):
+	def lens(self, camera, make=None, model=None):
 		# set the lens
 		# random make model if not specified
 		# if both, make is ignored
-		pass
+
+		return camera
 
 	def camera(self, make=None, model=None):
 		# set the camera
 		# random make model if not specified
 		# if both, make is ignored
-		pass
+
+		# TODO implement the above
+		if self.cameras:
+			camera = random.choice(self.cameras)
+		else:
+			camera = None
+		return camera
 
 	def exposure(self, ev=None):
 		# randomized on EXIF time with extra perturbations
@@ -219,12 +266,6 @@ def dump_exif(indir, outdir, clobber=False):
 		else:
 			print "EXIF dump already exists for %s, skipping" % imgfile
 
-
-def random_timestamp(start=(time.time() - 3.15569e7), end=time.time()):
-	return time.gmtime(random.randint(int(start), int(end)))
-
-
-
 def replaceiftag(tags, tag, value):
 	if tag in tags.keys():
 		tags[tag] = value
@@ -294,7 +335,7 @@ def fix_image(image, template_exif):
 	image_exif.save_file()
 	return temp
 '''
-dump_exif("camrefs", "exifdumps")
+
 cameras = load_exif_dumps("exifdumps")
 imgbuf = StringIO.StringIO()
 cats = load_cats(cat_path)
@@ -302,7 +343,7 @@ assets = load_cats(asset_path)
 katze = collage(2048, 1024, assets, cats, 10)
 kexif = fix_image(katze, random.choice(cameras))
 '''
-
+# dump_exif("camrefs", "exifdumps")
 cam = Camera()
 cam.load_metadata("exifdumps")
 cam.camera = random.choice(cam.cameras)
