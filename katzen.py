@@ -43,19 +43,31 @@ class Camera:
 	FSTOPS = [1.0, 1.1, 1.2, 1.3, 1.4, 1.5, 1.7, 1.8, 2, 2.2, 2.4, 2.6, 2.8, 3.2, 3.4, 3.7, 4, 4.4, 4.8, 5.2, 5.6, 6.2, 6.7, 7.3, 8, 8.7, 9.5, 10, 11, 12, 14, 15, 16, 17, 19, 21, 22]
 	def __init__(self):
 		cameras = []
-		self.hints = {}
-		self.hints['default'] = {
-			"SerialTags": [
+		self.hints = {
+			'SerialTags': [
 				'Exif.Photo.BodySerialNumber',
 				'Exif.Canon.InternalSerialNumber',
 				'Exif.Photo.LensSerialNumber',
 				'Xmp.aux.SerialNumber',
 				'Exif.Nikon3.SerialNumber'
 			],
-			"TimeFormats": {
-				"nikonxmp":('\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d.\d\d\w', "%Y-%m-%dT%H:%M:%S.00Z"),
-				"exif":('\d{4}:\d\d:\d\d \d\d:\d\d:\d\d', "%Y:%m:%d %H:%M:%S"),
-				"gpstime":('\d+\/\d+\s+\d+\/\d+\s+\d+\/\d+', None)
+			'TimeFormats': {
+				'nikonxmp':('\d{4}-\d\d-\d\dT\d\d:\d\d:\d\d.\d\d\w', "%Y-%m-%dT%H:%M:%S.00Z"),
+				'exif':('\d{4}:\d\d:\d\d \d\d:\d\d:\d\d', "%Y:%m:%d %H:%M:%S"),
+				'gpstime':('\d+\/\d+\s+\d+\/\d+\s+\d+\/\d+', None)
+			},
+			'Randomize': {
+				'Exif.Nikon3.ShutterCount': ('auto_randomize_integer', 0.5),
+				'Exif.CanonSi.TargetAperture': ('auto_randomize_integer', 0.1),
+				'Exif.NikonLd3.FocusDistance': ('auto_randomize_integer', 0.5),
+				'Exif.NikonPc.Saturation': ('auto_randomize_integer', 0.25),
+				'Exif.Photo.SubjectArea': ('auto_randomize_rect', None)
+			},
+			'FileNames': {
+				'Canon': "IMG_0###.jpg",
+				'NIKON CORPORATION': "dsc0###.jpg",
+				'Sony':"mvc00###.jpg",
+				'Apple':"IMG00###.jpg"
 			}
 		}
 		self.time = None
@@ -72,14 +84,54 @@ class Camera:
 				dumps.append(dump)
 		return dumps
 
+	def load_metadata(self, cameras, hints=None):
+		# camera_makes = set([camera['Exif.Image.Make'] for camera in cameras])
+		# models_for_make = set([camera['Exif.Image.Model'] for camera in cameras if camera['Exif.Image.Make'] == 'Canon'])
+		# make_for_model = set([camera['Exif.Image.Make'] for camera in cameras if camera['Exif.Image.Model'] == u'Canon PowerShot G15'])
+		self.cameras = self.load_json_dumps(cameras)
+		if hints:
+			self.hints = self.load_json_dumps(hints)
+		print "Have %i cameras comprising %i unique makes and %i unique models." % (len(self.cameras), len(self.camera_makes()), len(self.camera_models()))
+		for camera in self.cameras:
+			print "%s: %s" % (camera['Exif.Image.Make'], camera['Exif.Image.Model'])
+		return self
+
 	def camera_makes(self):
 		return set([camera['Exif.Image.Make'] for camera in self.cameras])
 
 	def camera_models(self):
 		return set([camera['Exif.Image.Model'] for camera in self.cameras])
 
-	def get_lens(self, camera=None):
+	def fix_lens(self, camera):
+		focal_length = Fraction(random.uniform(3.0, 75.0)).limit_denominator(2000)
 		pass
+
+	def randomize_filename(self, template):
+		''' template###.jpg -> template783.jpg '''
+		fname = str()
+		for char in template:
+			if char == '#':
+				fname += str(random.randint(0, 9))
+			else:
+				fname += char
+		return fname
+
+	def auto_randomize_integer(self, camera, number, error=0.3):
+		number = int(number)
+		number = random.randint(int(number - (number * (error / 2.0))), int(number + (number * (error / 2.0))))
+		if number < 0:
+			number = 0
+		return number
+
+	def auto_randomize_rect(self, camera, unused_a, unused_b):
+		dimx = int(camera['Exif.Photo.PixelXDimension'])
+		dimy = int(camera['Exif.Photo.PixelYDimension'])
+		rect = [random.randint(dimx/10, dimx/4), 
+				random.randint(dimy/10, dimx/4),
+				random.randint(dimx - (dimx/4), dimx - (dimx/10)),
+				random.randint(dimy - (dimy/4), dimy - (dimy/10))]
+		rect = " ".join([str(i) for i in rect])
+		return rect
 
 	def randomize_timestamp(self, start=(time.time() - 3.15569e7), end=time.time()):
 		ts = random.randint(int(start), int(end))
@@ -102,20 +154,23 @@ class Camera:
 				newserial += char
 		return newserial
 
+	def replace_if_tag(self, tags, tag, value):
+		if tag in tags.keys():
+			tags[tag] = value
+
 	def fix_serials(self, camera):
 		''' file off the serial number '''
-		for tag in self.hints['default']['SerialTags']:
+		for tag in self.hints['SerialTags']:
 			if tag in camera.keys():
 				print "Fixing serial: %s (%s)" % (tag, camera[tag])
 				camera[tag] = self.randomize_serial(camera[tag])
 		return camera
 
 	def fix_timestamps(self, camera, newtime):
-		# imgtime = time.strftime("%Y:%m:%d %H:%M:%S", random_timestamp())
 		skiptags = []
 		for tag in camera.keys():
 			if re.search('\w+Time\w+', tag):
-				for fmtname, format in self.hints['default']['TimeFormats'].iteritems():
+				for fmtname, format in self.hints['TimeFormats'].iteritems():
 					match = re.search(format[0], camera[tag])
 					# print "%s - match:%s format[0]:'%s' format[1]:'%s' value:'%s'" % (fmtname, bool(match), format[0], format[1], camera[tag])
 					if match and format[1]:
@@ -135,66 +190,75 @@ class Camera:
 			camera[t] = ''
 
 		return camera
-					
-	def fix_hinted_tags(self, camera):
-		pass
 
-	def load_metadata(self, cameras, hints=None):
-		# camera_makes = set([camera['Exif.Image.Make'] for camera in cameras])
-		# models_for_make = set([camera['Exif.Image.Model'] for camera in cameras if camera['Exif.Image.Make'] == 'Canon'])
-		# make_for_model = set([camera['Exif.Image.Make'] for camera in cameras if camera['Exif.Image.Model'] == u'Canon PowerShot G15'])
-		self.cameras = self.load_json_dumps(cameras)
-		if hints:
-			self.hints = self.load_json_dumps(hints)
-		print "Have %i cameras comprising %i unique makes and %i unique models." % (len(self.cameras), len(self.camera_makes()), len(self.camera_models()))
-		for camera in self.cameras:
-			print "%s: %s (%s)" % (camera['Exif.Image.Make'], camera['Exif.Image.Model'], self.get_lens(camera))
-		return self
-
-	def hint(self, make):
-		# get metadata hint for a vendor
-		# applicable vendor EXIF tags, lenses, etc
-		pass
-
-	def lens(self, camera, make=None, model=None):
-		# set the lens
-		# random make model if not specified
-		# if both, make is ignored
-
+	def fix_randomizable(self, camera):
+		for tag, fnargs in self.hints['Randomize'].iteritems():
+			fn = getattr(self, fnargs[0])
+			if fn and (tag in camera.keys()):
+				print "Randomizing %s with %s." % (tag, fnargs[0])
+				camera[tag] = fn(camera, camera[tag], fnargs[1])
+			else:
+				if not fn:
+					print "Attempt to randomize %s failed: no handler for %s." % (tag, fnargs[0])
 		return camera
 
-	def camera(self, make=None, model=None):
+	def fix_exposure(self, camera, ev=None):
+		# set the exposure parameters (shutter, aperture, flash)
+		# FIXME randomize on EXIF time/estimated daylight with extra perturbations 
+		# FIXME needs hints rough camera capabilities especially for P&S lines and phones
+		# FIXME this is a top of the dome exposure "model"
+		# FIXME this whole thing needs rework and thought
+		aperture = Fraction(random.uniform(1.0, 16.0)).limit_denominator(2000)
+		exposure = Fraction(1.0/round(random.randint(8, int(100.0*aperture))+1, -2)).limit_denominator(4000)
+		camera['Exif.Photo.ISOSpeedRatings'] = str(random.choice(self.ISOSPEEDS))
+		camera['Exif.Photo.ExposureTime'] = str(exposure)
+		# shutter speed = -1*log2(exposure)
+		# magic, i dunno.
+		camera['Exif.Photo.ShutterSpeedValue'] = str(Fraction(math.log(exposure, 2) * -1).limit_denominator(2000))
+		camera['Exif.Photo.ApertureValue'] = str(aperture)
+		# f stop = sqrt(2)^aperture
+		# more magic. looks real enough i think.
+		camera['Exif.Photo.FNumber'] = str(Fraction(math.pow(1.4142, aperture)).limit_denominator(2000))
+
+		flash = random.choice([0x00, 0x1, 0x18, 0x19, 0x49, 0x4d, 0x4f, 0x49, 0x4d, 0x4f])
+		camera['Exif.Photo.Flash'] = str(flash)
+		self.replace_if_tag(camera, 'Xmp.exif.Flash/exif:Fired', str(bool(flash & 0x01)))
+		# camera['Exif.Photo.FocalLength'] = str(focal_length)
+		camera['Exif.Image.Orientation'] = str(random.choice([0, 1]))
+		return camera
+		
+
+	def fix_lens(self, camera):
+		# set the lens
+		# looks at hints for vendor and model-compatible lenses (as much as possible anyway)
+		# at the very least should avoid putting a DSLR lens on an iPhone, because that's just silly
+		return camera
+
+	def set_camera(self, make=None, model=None):
 		# set the camera
 		# random make model if not specified
 		# if both, make is ignored
 
 		# TODO implement the above
 		if self.cameras:
-			camera = random.choice(self.cameras)
+			self.camera = random.choice(self.cameras)
 		else:
-			camera = None
-		return camera
+			self.camera = None
+			return None
 
-	def exposure(self, ev=None):
-		# randomized on EXIF time with extra perturbations
-		# used by aperture and shutter
-		pass
+		return dict(self.camera)
 
-	def aperture(self, fstop=None):
-		# calculated from exposure value if available
-		# randomized between lens minf/maxf limit if available
-		# randomized between defaults if not
-		pass
-
-	def shutter(self, speed=None):
-		# calculated from exposure value and aperture if available
-		# randomized from camera shutter_speeds if available
-		# randomized between camera mins/maxs limit if available
-		pass
-
-	def snap(self, camera=None):
+	def snap(self):
+		''' they pull they cameras out and god damn they snap '''
 		# take a picture (generate an EXIF template based on the selected camera)
-		pass
+		cam = dict(self.camera)
+		cam = self.fix_timestamps(cam, self.randomize_timestamp())
+		cam = self.fix_serials(cam)
+		cam = self.fix_exposure(cam)
+		cam = self.fix_randomizable(cam)
+		filename = self.randomize_filename(self.hints["FileNames"][cam['Exif.Image.Make']])
+		return (cam, filename)
+
 '''
 class Tourist:
 	def __init__(self):
@@ -267,10 +331,6 @@ def dump_exif(indir, outdir, clobber=False):
 		else:
 			print "EXIF dump already exists for %s, skipping" % imgfile
 
-def replaceiftag(tags, tag, value):
-	if tag in tags.keys():
-		tags[tag] = value
-
 def fix_exif(image_exif, template_exif_dump, metalocation=None, metacamera=None):
 	''' fix as in fixer '''
 	# image_exif is a gexiv2 metadata object
@@ -288,36 +348,6 @@ def fix_exif(image_exif, template_exif_dump, metalocation=None, metacamera=None)
 	template['Exif.Image.DateTime'] = imgtime
 	replaceiftag(template, 'Xmp.exif.DateTimeDigitized', imgtime)
 	replaceiftag(template, 'Xmp.exif.DateTimeOriginal', imgtime)
-
-	# photograpic properties
-	# FIXME this should map back to a database of rough camera capabilities
-	# especially for P&S lines and phones
-	focal_length = Fraction(random.uniform(3.0, 75.0)).limit_denominator(2000)
-	# FIXME this is a top of the dome exposure model
-	aperture = Fraction(random.uniform(1.0, 10.0)).limit_denominator(2000)
-	exposure = Fraction(1.0/round(random.randint(8, int(100.0*aperture)), -2)).limit_denominator(4000)
-	template['Exif.Photo.ISOSpeedRatings'] = str(random.choice(ISOSPEEDS))
-	template['Exif.Photo.ExposureTime'] = str(exposure)
-	# shutter speed = -1*log2(exposure)
-	# magic, i dunno.
-	template['Exif.Photo.ShutterSpeedValue'] = str(Fraction(math.log(exposure, 2) * -1).limit_denominator(2000))
-	template['Exif.Photo.ApertureValue'] = str(aperture)
-	# f stop = sqrt(2)^aperture
-	# more magic. looks real enough i think.
-	template['Exif.Photo.FNumber'] = str(Fraction(math.pow(1.4142, aperture)).limit_denominator(2000))
-
-	if 'Exif.Photo.SubjectArea' in template_tags:
-		# make a box. i dunno
-		subjarea = [random.randint(dimx/10, dimx/4), 
-					random.randint(dimy/10, dimx/4),
-					random.randint(dimx - (dimx/4), dimx - (dimx/10)),
-					random.randint(dimy - (dimy/4), dimy - (dimy/10))]
-		template['Exif.Photo.SubjectArea'] = " ".join([str(i) for i in subjarea])
-	flash = random.choice([0x00, 0x1, 0x18, 0x19, 0x49, 0x4d, 0x4f, 0x49, 0x4d, 0x4f])
-	template['Exif.Photo.Flash'] = str(flash)
-	replaceiftag(template, 'Xmp.exif.Flash/exif:Fired', str(bool(flash & 0x01)))
-	template['Exif.Photo.FocalLength'] = str(focal_length)
-	template['Exif.Image.Orientation'] = str(random.choice([0, 1]))
 
 	image_exif.clear()
 	for tag, value in template.iteritems():
@@ -347,7 +377,6 @@ kexif = fix_image(katze, random.choice(cameras))
 # dump_exif("camrefs", "exifdumps")
 cam = Camera()
 cam.load_metadata("exifdumps")
-cam.camera = random.choice(cam.cameras)
 
 import code
 code.interact(local=locals())
